@@ -500,6 +500,10 @@ c.dispose();
 | Firefox 118+ | ⚠️ 需开启 | ❌ | ✅ |
 | Safari 17+ | ⚠️ 预览版 | ❌ | ✅ |
 
+## Star History
+
+[![Star History Chart](https://api.star-history.com/image?repos=s-zx/edgeFlow.js&type=date&legend=top-left)](https://www.star-history.com/?repos=s-zx%2FedgeFlow.js&type=date&legend=top-left)
+
 ## 📖 API 参考
 
 ### 核心

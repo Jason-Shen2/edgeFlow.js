@@ -532,6 +532,10 @@ c.dispose();
 | Firefox 118+ | ⚠️ Flag | ❌ | ✅ |
 | Safari 17+ | ⚠️ Preview | ❌ | ✅ |
 
+## Star History
+
+[![Star History Chart](https://api.star-history.com/image?repos=s-zx/edgeFlow.js&type=date&legend=top-left)](https://www.star-history.com/?repos=s-zx%2FedgeFlow.js&type=date&legend=top-left)
+
 ## 📖 API Reference
 
 ### Core
