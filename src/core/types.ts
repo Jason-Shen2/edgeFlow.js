@@ -349,6 +349,8 @@ export interface PipelineConfig {
   device?: 'cpu' | 'gpu';
   /** Custom tokenizer config */
   tokenizer?: TokenizerConfig;
+  /** Tokenizer URL (e.g. HuggingFace tokenizer.json); overrides the pipeline's default */
+  tokenizerUrl?: string;
 }
 
 /**
