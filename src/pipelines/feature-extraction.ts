@@ -49,12 +49,13 @@ export class FeatureExtractionPipeline extends BasePipeline<
   private embeddingDim: number;
   private modelUrl: string;
   private tokenizerUrl: string;
+  private modelInputNames: Set<string> = new Set();
 
   constructor(config: PipelineConfig, embeddingDim: number = DEFAULT_EMBEDDING_DIM) {
     super(config);
     this.embeddingDim = embeddingDim;
     this.modelUrl = config.model !== 'default' ? config.model : DEFAULT_MODELS.model;
-    this.tokenizerUrl = DEFAULT_MODELS.tokenizer;
+    this.tokenizerUrl = config.tokenizerUrl ?? DEFAULT_MODELS.tokenizer;
   }
 
   override async initialize(): Promise<void> {
@@ -67,6 +68,7 @@ export class FeatureExtractionPipeline extends BasePipeline<
     if (!this.onnxModel) {
       const modelData = await loadModelData(this.modelUrl, { cache: this.config.cache ?? true });
       this.onnxModel = await loadModelFromBuffer(modelData);
+      this.modelInputNames = new Set(this.onnxModel.metadata.inputs.map(i => i.name));
     }
   }
 
@@ -118,20 +120,30 @@ export class FeatureExtractionPipeline extends BasePipeline<
       'int64'
     );
 
-    const tokenTypeIds = new EdgeFlowTensor(
-      BigInt64Array.from(encoded.inputIds.map(() => BigInt(0))),
-      [1, encoded.inputIds.length],
-      'int64'
-    );
+    const tensors: EdgeFlowTensor[] = [inputIds, attentionMask];
 
-    return [inputIds, attentionMask, tokenTypeIds];
+    // Only emit token_type_ids when the loaded model declares it as an input.
+    // XLM-R / RoBERTa / multilingual MiniLM omit this input; feeding it would
+    // trip onnxruntime-web's session.run with "invalid input" errors.
+    if (this.modelInputNames.has('token_type_ids')) {
+      const tokenTypeIds = new EdgeFlowTensor(
+        BigInt64Array.from(encoded.inputIds.map(() => BigInt(0))),
+        [1, encoded.inputIds.length],
+        'int64'
+      );
+      tensors.push(tokenTypeIds);
+    }
+
+    return tensors;
   }
 
   private async runInference(inputs: EdgeFlowTensor[]): Promise<EdgeFlowTensor[]> {
     const namedInputs = new Map<string, EdgeFlowTensor>();
     namedInputs.set('input_ids', inputs[0]!);
     namedInputs.set('attention_mask', inputs[1]!);
-    namedInputs.set('token_type_ids', inputs[2]!);
+    if (this.modelInputNames.has('token_type_ids') && inputs[2]) {
+      namedInputs.set('token_type_ids', inputs[2]);
+    }
 
     const outputs = await runInferenceNamed(this.onnxModel!, namedInputs);
     return outputs as EdgeFlowTensor[];
@@ -239,6 +251,7 @@ export function createFeatureExtractionPipeline(
     runtime: config.runtime,
     cache: config.cache ?? true,
     quantization: config.quantization,
+    tokenizerUrl: config.tokenizerUrl,
   });
 }
 
