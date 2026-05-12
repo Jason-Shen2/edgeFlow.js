@@ -556,23 +556,44 @@ export class Tokenizer {
      */
     decode(ids, skipSpecialTokens = true) {
         let tokens = this.convertIdsToTokens(ids);
-        // Filter special tokens
         if (skipSpecialTokens) {
             tokens = tokens.filter(t => !this.specialTokens.has(t));
         }
-        // Join tokens
-        let text = tokens.join('');
-        // For BPE, decode bytes
         if (this.modelType === 'BPE') {
-            text = this.bytesToText(text);
+            // BPE: byte-level encoding, join raw and decode bytes
+            return this.bytesToText(tokens.join('')).replace(/\s+/g, ' ').trim();
         }
-        // For WordPiece, handle ## prefix
         if (this.modelType === 'WordPiece') {
-            text = text.replace(new RegExp(this.continuingSubwordPrefix, 'g'), '');
+            // WordPiece: tokens starting with continuingSubwordPrefix (##) are
+            // subword continuations and must be appended to the previous word
+            // WITHOUT a space. All other tokens are word-starts and get a space.
+            const prefix = this.continuingSubwordPrefix; // '##'
+            const words = [];
+            for (const token of tokens) {
+                if (token.startsWith(prefix)) {
+                    if (words.length > 0) {
+                        words[words.length - 1] += token.slice(prefix.length);
+                    }
+                    else {
+                        words.push(token.slice(prefix.length));
+                    }
+                }
+                else {
+                    words.push(token);
+                }
+            }
+            return words.join(' ').replace(/\s+/g, ' ').trim();
         }
-        // Clean up whitespace
-        text = text.replace(/\s+/g, ' ').trim();
-        return text;
+        if (this.modelType === 'Unigram') {
+            // SentencePiece: ▁ marks word boundaries (replaces the leading space)
+            return tokens
+                .join('')
+                .replace(/\u2581/g, ' ')
+                .replace(/\s+/g, ' ')
+                .trim();
+        }
+        // Default: space-join
+        return tokens.join(' ').replace(/\s+/g, ' ').trim();
     }
     /**
      * Decode batch

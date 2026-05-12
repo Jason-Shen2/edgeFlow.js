@@ -5012,15 +5012,29 @@ var Tokenizer = class _Tokenizer {
     if (skipSpecialTokens) {
       tokens = tokens.filter((t) => !this.specialTokens.has(t));
     }
-    let text = tokens.join("");
     if (this.modelType === "BPE") {
-      text = this.bytesToText(text);
+      return this.bytesToText(tokens.join("")).replace(/\s+/g, " ").trim();
     }
     if (this.modelType === "WordPiece") {
-      text = text.replace(new RegExp(this.continuingSubwordPrefix, "g"), "");
+      const prefix = this.continuingSubwordPrefix;
+      const words = [];
+      for (const token of tokens) {
+        if (token.startsWith(prefix)) {
+          if (words.length > 0) {
+            words[words.length - 1] += token.slice(prefix.length);
+          } else {
+            words.push(token.slice(prefix.length));
+          }
+        } else {
+          words.push(token);
+        }
+      }
+      return words.join(" ").replace(/\s+/g, " ").trim();
     }
-    text = text.replace(/\s+/g, " ").trim();
-    return text;
+    if (this.modelType === "Unigram") {
+      return tokens.join("").replace(/\u2581/g, " ").replace(/\s+/g, " ").trim();
+    }
+    return tokens.join(" ").replace(/\s+/g, " ").trim();
   }
   /**
    * Decode batch
@@ -5229,9 +5243,10 @@ var FeatureExtractionPipeline = class extends BasePipeline {
     __publicField(this, "embeddingDim");
     __publicField(this, "modelUrl");
     __publicField(this, "tokenizerUrl");
+    __publicField(this, "modelInputNames", /* @__PURE__ */ new Set());
     this.embeddingDim = embeddingDim;
     this.modelUrl = config.model !== "default" ? config.model : DEFAULT_MODELS2.model;
-    this.tokenizerUrl = DEFAULT_MODELS2.tokenizer;
+    this.tokenizerUrl = config.tokenizerUrl ?? DEFAULT_MODELS2.tokenizer;
   }
   async initialize() {
     await super.initialize();
@@ -5241,6 +5256,7 @@ var FeatureExtractionPipeline = class extends BasePipeline {
     if (!this.onnxModel) {
       const modelData = await loadModelData(this.modelUrl, { cache: this.config.cache ?? true });
       this.onnxModel = await loadModelFromBuffer(modelData);
+      this.modelInputNames = new Set(this.onnxModel.metadata.inputs.map((i) => i.name));
     }
   }
   async run(input, options) {
@@ -5270,14 +5286,20 @@ var FeatureExtractionPipeline = class extends BasePipeline {
     });
     const inputIds = new EdgeFlowTensor(BigInt64Array.from(encoded.inputIds.map((id) => BigInt(id))), [1, encoded.inputIds.length], "int64");
     const attentionMask = new EdgeFlowTensor(BigInt64Array.from(encoded.attentionMask.map((m) => BigInt(m))), [1, encoded.attentionMask.length], "int64");
-    const tokenTypeIds = new EdgeFlowTensor(BigInt64Array.from(encoded.inputIds.map(() => BigInt(0))), [1, encoded.inputIds.length], "int64");
-    return [inputIds, attentionMask, tokenTypeIds];
+    const tensors = [inputIds, attentionMask];
+    if (this.modelInputNames.has("token_type_ids")) {
+      const tokenTypeIds = new EdgeFlowTensor(BigInt64Array.from(encoded.inputIds.map(() => BigInt(0))), [1, encoded.inputIds.length], "int64");
+      tensors.push(tokenTypeIds);
+    }
+    return tensors;
   }
   async runInference(inputs) {
     const namedInputs = /* @__PURE__ */ new Map();
     namedInputs.set("input_ids", inputs[0]);
     namedInputs.set("attention_mask", inputs[1]);
-    namedInputs.set("token_type_ids", inputs[2]);
+    if (this.modelInputNames.has("token_type_ids") && inputs[2]) {
+      namedInputs.set("token_type_ids", inputs[2]);
+    }
     const outputs = await runInferenceNamed(this.onnxModel, namedInputs);
     return outputs;
   }
@@ -5361,7 +5383,8 @@ function createFeatureExtractionPipeline(config = {}) {
     model: config.model ?? "default",
     runtime: config.runtime,
     cache: config.cache ?? true,
-    quantization: config.quantization
+    quantization: config.quantization,
+    tokenizerUrl: config.tokenizerUrl
   });
 }
 registerPipeline("feature-extraction", (config) => new FeatureExtractionPipeline(config));
@@ -7402,11 +7425,13 @@ var QuestionAnsweringPipeline = class extends BasePipeline {
       addSpecialTokens: true,
       maxLength: 512,
       truncation: true,
+      padding: "do_not_pad",
       returnAttentionMask: true,
       returnTokenTypeIds: true
     });
-    const inputIds = new EdgeFlowTensor(BigInt64Array.from(encoded.inputIds.map((id) => BigInt(id))), [1, encoded.inputIds.length], "int64");
-    const attentionMask = new EdgeFlowTensor(BigInt64Array.from(encoded.attentionMask.map((m) => BigInt(m))), [1, encoded.attentionMask.length], "int64");
+    const seqLen = encoded.inputIds.length;
+    const inputIds = new EdgeFlowTensor(BigInt64Array.from(encoded.inputIds.map((id) => BigInt(id))), [1, seqLen], "int64");
+    const attentionMask = new EdgeFlowTensor(BigInt64Array.from(encoded.attentionMask.map((m) => BigInt(m))), [1, seqLen], "int64");
     const namedInputs = /* @__PURE__ */ new Map();
     namedInputs.set("input_ids", inputIds);
     namedInputs.set("attention_mask", attentionMask);
@@ -7416,14 +7441,17 @@ var QuestionAnsweringPipeline = class extends BasePipeline {
     }
     const startLogits = outputs[0].toFloat32Array();
     const endLogits = outputs[1].toFloat32Array();
-    const seqLen = startLogits.length;
     const startProbs = softmax(new EdgeFlowTensor(new Float32Array(startLogits), [seqLen], "float32")).toFloat32Array();
     const endProbs = softmax(new EdgeFlowTensor(new Float32Array(endLogits), [seqLen], "float32")).toFloat32Array();
-    let bestStartIdx = 0;
-    let bestEndIdx = 0;
-    let bestScore = 0;
-    for (let s = 0; s < seqLen; s++) {
-      for (let e = s; e < Math.min(s + maxAnswerLength, seqLen); e++) {
+    const typeIds = encoded.tokenTypeIds ?? new Array(seqLen).fill(1);
+    const contextStart = typeIds.findIndex((t) => t === 1);
+    const spanStart = contextStart >= 0 ? contextStart : 0;
+    const spanEnd = seqLen - 1;
+    let bestStartIdx = spanStart;
+    let bestEndIdx = spanStart;
+    let bestScore = -Infinity;
+    for (let s = spanStart; s <= spanEnd; s++) {
+      for (let e = s; e < Math.min(s + maxAnswerLength, spanEnd + 1); e++) {
         const score = (startProbs[s] ?? 0) * (endProbs[e] ?? 0);
         if (score > bestScore) {
           bestScore = score;
@@ -7434,20 +7462,13 @@ var QuestionAnsweringPipeline = class extends BasePipeline {
     }
     const answerTokenIds = encoded.inputIds.slice(bestStartIdx, bestEndIdx + 1);
     const answer = this.tokenizer.decode(answerTokenIds, true);
-    const charStart = this.tokenOffsetToCharOffset(context, question, encoded.inputIds, bestStartIdx);
-    const charEnd = this.tokenOffsetToCharOffset(context, question, encoded.inputIds, bestEndIdx) + 1;
     return {
       answer: answer || "",
-      score: bestScore,
-      start: charStart,
-      end: charEnd,
+      score: Math.max(0, bestScore),
+      start: bestStartIdx,
+      end: bestEndIdx,
       processingTime: performance.now() - startTime
     };
-  }
-  tokenOffsetToCharOffset(context, _question, inputIds, tokenIdx) {
-    const decoded = this.tokenizer.decode(inputIds.slice(0, tokenIdx + 1), true);
-    const contextStart = context.indexOf(decoded.trim().split(" ").pop() ?? "");
-    return contextStart >= 0 ? contextStart : 0;
   }
   async preprocess(input) {
     const qaInput = Array.isArray(input) ? input[0] : input;

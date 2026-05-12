@@ -54,16 +54,19 @@ export class QuestionAnsweringPipeline extends BasePipeline {
         const startTime = performance.now();
         const { question, context } = input;
         const maxAnswerLength = options.maxAnswerLength ?? 30;
+        // No padding — QA runs one example at a time and padding wastes compute
         const encoded = this.tokenizer.encode(question, {
             textPair: context,
             addSpecialTokens: true,
             maxLength: 512,
             truncation: true,
+            padding: 'do_not_pad',
             returnAttentionMask: true,
             returnTokenTypeIds: true,
         });
-        const inputIds = new EdgeFlowTensor(BigInt64Array.from(encoded.inputIds.map(id => BigInt(id))), [1, encoded.inputIds.length], 'int64');
-        const attentionMask = new EdgeFlowTensor(BigInt64Array.from(encoded.attentionMask.map(m => BigInt(m))), [1, encoded.attentionMask.length], 'int64');
+        const seqLen = encoded.inputIds.length;
+        const inputIds = new EdgeFlowTensor(BigInt64Array.from(encoded.inputIds.map(id => BigInt(id))), [1, seqLen], 'int64');
+        const attentionMask = new EdgeFlowTensor(BigInt64Array.from(encoded.attentionMask.map(m => BigInt(m))), [1, seqLen], 'int64');
         const namedInputs = new Map();
         namedInputs.set('input_ids', inputIds);
         namedInputs.set('attention_mask', attentionMask);
@@ -73,15 +76,20 @@ export class QuestionAnsweringPipeline extends BasePipeline {
         }
         const startLogits = outputs[0].toFloat32Array();
         const endLogits = outputs[1].toFloat32Array();
-        const seqLen = startLogits.length;
         const startProbs = softmax(new EdgeFlowTensor(new Float32Array(startLogits), [seqLen], 'float32')).toFloat32Array();
         const endProbs = softmax(new EdgeFlowTensor(new Float32Array(endLogits), [seqLen], 'float32')).toFloat32Array();
-        // Find best start/end token positions
-        let bestStartIdx = 0;
-        let bestEndIdx = 0;
-        let bestScore = 0;
-        for (let s = 0; s < seqLen; s++) {
-            for (let e = s; e < Math.min(s + maxAnswerLength, seqLen); e++) {
+        // Constrain answer span to the context portion only (tokenTypeIds === 1).
+        // tokenTypeIds: 0 = question tokens ([CLS], question, [SEP]), 1 = context tokens.
+        const typeIds = encoded.tokenTypeIds ?? new Array(seqLen).fill(1);
+        // Find where context starts (first index with typeId === 1)
+        const contextStart = typeIds.findIndex(t => t === 1);
+        const spanStart = contextStart >= 0 ? contextStart : 0;
+        const spanEnd = seqLen - 1; // last non-padding position
+        let bestStartIdx = spanStart;
+        let bestEndIdx = spanStart;
+        let bestScore = -Infinity;
+        for (let s = spanStart; s <= spanEnd; s++) {
+            for (let e = s; e < Math.min(s + maxAnswerLength, spanEnd + 1); e++) {
                 const score = (startProbs[s] ?? 0) * (endProbs[e] ?? 0);
                 if (score > bestScore) {
                     bestScore = score;
@@ -90,26 +98,16 @@ export class QuestionAnsweringPipeline extends BasePipeline {
                 }
             }
         }
-        // Decode the answer span back to text
+        // Decode the answer span directly from token IDs in the context portion
         const answerTokenIds = encoded.inputIds.slice(bestStartIdx, bestEndIdx + 1);
         const answer = this.tokenizer.decode(answerTokenIds, true);
-        // Map token positions back to character offsets in context
-        const charStart = this.tokenOffsetToCharOffset(context, question, encoded.inputIds, bestStartIdx);
-        const charEnd = this.tokenOffsetToCharOffset(context, question, encoded.inputIds, bestEndIdx) + 1;
         return {
             answer: answer || '',
-            score: bestScore,
-            start: charStart,
-            end: charEnd,
+            score: Math.max(0, bestScore),
+            start: bestStartIdx,
+            end: bestEndIdx,
             processingTime: performance.now() - startTime,
         };
-    }
-    tokenOffsetToCharOffset(context, _question, inputIds, tokenIdx) {
-        // Approximate mapping: decode tokens up to this index and measure length
-        // For a production implementation you'd use the tokenizer's offset mapping.
-        const decoded = this.tokenizer.decode(inputIds.slice(0, tokenIdx + 1), true);
-        const contextStart = context.indexOf(decoded.trim().split(' ').pop() ?? '');
-        return contextStart >= 0 ? contextStart : 0;
     }
     async preprocess(input) {
         const qaInput = Array.isArray(input) ? input[0] : input;

@@ -71,6 +71,6 @@ describe('Backend Registration', () => {
 
   it('should not throw on registerAllBackends()', async () => {
     const { registerAllBackends } = await import('../../src/backends/index');
-    await expect(registerAllBackends()).resolves.not.toThrow();
+    expect(() => registerAllBackends()).not.toThrow();
   });
 });

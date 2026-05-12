@@ -17,6 +17,7 @@ export declare class FeatureExtractionPipeline extends BasePipeline<string | str
     private embeddingDim;
     private modelUrl;
     private tokenizerUrl;
+    private modelInputNames;
     constructor(config: PipelineConfig, embeddingDim?: number);
     initialize(): Promise<void>;
     run(input: string | string[], options?: FeatureExtractionOptions): Promise<FeatureExtractionResult | FeatureExtractionResult[]>;

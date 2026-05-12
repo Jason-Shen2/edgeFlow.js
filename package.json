@@ -1,6 +1,6 @@
 {
   "name": "edgeflowjs",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Lightweight, high-performance browser ML inference framework with native concurrency support",
   "type": "module",
   "main": "./dist/index.js",

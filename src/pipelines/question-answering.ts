@@ -181,18 +181,6 @@ export class QuestionAnsweringPipeline extends BasePipeline<
     };
   }
 
-  private tokenOffsetToCharOffset(
-    context: string,
-    _question: string,
-    inputIds: number[],
-    tokenIdx: number
-  ): number {
-    // Approximate mapping: decode tokens up to this index and measure length
-    // For a production implementation you'd use the tokenizer's offset mapping.
-    const decoded = this.tokenizer!.decode(inputIds.slice(0, tokenIdx + 1), true);
-    const contextStart = context.indexOf(decoded.trim().split(' ').pop() ?? '');
-    return contextStart >= 0 ? contextStart : 0;
-  }
 
   protected async preprocess(input: QAInput | QAInput[]): Promise<EdgeFlowTensor[]> {
     const qaInput = Array.isArray(input) ? input[0]! : input;

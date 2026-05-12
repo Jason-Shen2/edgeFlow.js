@@ -34,7 +34,6 @@ export declare class QuestionAnsweringPipeline extends BasePipeline<QAInput | QA
     setTokenizer(tokenizer: Tokenizer): void;
     run(input: QAInput | QAInput[], options?: QuestionAnsweringOptions): Promise<QuestionAnsweringResult | QuestionAnsweringResult[]>;
     private answerQuestion;
-    private tokenOffsetToCharOffset;
     protected preprocess(input: QAInput | QAInput[]): Promise<EdgeFlowTensor[]>;
     protected postprocess(outputs: EdgeFlowTensor[], _options?: PipelineOptions): Promise<QuestionAnsweringResult | QuestionAnsweringResult[]>;
 }
