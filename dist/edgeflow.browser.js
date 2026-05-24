@@ -10816,7 +10816,7 @@ async function preload(models) {
     }
   }));
 }
-var VERSION = "0.1.0";
+var VERSION = "0.3.0";
 async function getInfo() {
   const runtimes = await getAvailableRuntimes();
   return {

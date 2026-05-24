@@ -61,7 +61,7 @@ export declare function preload(models: string[]): Promise<void>;
 /**
  * edgeFlow.js version
  */
-export declare const VERSION = "0.1.0";
+export declare const VERSION = "0.3.0";
 /**
  * Get framework info
  */
