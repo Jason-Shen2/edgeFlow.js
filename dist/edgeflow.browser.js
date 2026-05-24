@@ -3703,7 +3703,7 @@ var ONNXRuntime = class {
       return;
     const ortModule = await getOrt();
     if (!ortModule) {
-      throw new EdgeFlowError("onnxruntime-web is not installed. Install it with: npm install onnxruntime-web", ErrorCodes.RUNTIME_NOT_AVAILABLE);
+      throw new EdgeFlowError('onnxruntime-web could not be loaded.\n  - If it is not installed: `npm install onnxruntime-web`.\n  - If it IS installed (e.g. you see this inside a Web Worker, or with a bundler that drops the internal dynamic import): import it yourself and inject it before use \u2014 `import * as ort from "onnxruntime-web/wasm"; setOnnxModule(ort);`', ErrorCodes.RUNTIME_NOT_AVAILABLE);
     }
     const wasmEnv = ortModule.env?.wasm;
     if (wasmEnv) {

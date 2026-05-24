@@ -156,8 +156,20 @@ export class ONNXRuntime implements Runtime {
 
     const ortModule = await getOrt();
     if (!ortModule) {
+      // Two distinct causes land here, and the fix differs — say both so
+      // a consumer who DID install ORT isn't sent chasing a phantom
+      // missing dependency:
+      //  1. onnxruntime-web genuinely isn't installed.
+      //  2. It's installed, but the internal dynamic import was dropped /
+      //     not resolved by the bundler — common in Web Workers and some
+      //     Vite setups. The fix there is to inject it, not reinstall.
       throw new EdgeFlowError(
-        'onnxruntime-web is not installed. Install it with: npm install onnxruntime-web',
+        'onnxruntime-web could not be loaded.\n' +
+          '  - If it is not installed: `npm install onnxruntime-web`.\n' +
+          '  - If it IS installed (e.g. you see this inside a Web Worker, or ' +
+          'with a bundler that drops the internal dynamic import): import it ' +
+          'yourself and inject it before use — `import * as ort from ' +
+          '"onnxruntime-web/wasm"; setOnnxModule(ort);`',
         ErrorCodes.RUNTIME_NOT_AVAILABLE
       );
     }
