@@ -77,14 +77,27 @@ directly on the statically-imported ORT module (relying on ESM singleton
 identity so the library's dynamic import inherits it), and use positional
 `runInference` ordered against `model.metadata.inputs`.
 
-**Upstream fix (this commit):**
-- Added `setOnnxModule(module)` — inject a pre-imported ORT module;
-  `getOrt()` prefers it over the dynamic import.
-- Added `configureOnnxAssets({ wasm, mjs })` — sets `env.wasm.wasmPaths`
-  (object form) during init.
-- Removed the `typeof window` gate in `ONNXRuntime.initialize()` so
-  worker contexts get configured too (numThreads=1, asset paths).
+**Root cause:** the ONNX backend over-owned an *optional peer dependency*
+it doesn't own. It both auto-imported ORT (fragile under worker bundlers)
+and auto-mutated ORT's global `env` with hardcoded values (`/ort/`,
+`numThreads=1`) behind a `typeof window` gate. The clean model is
+**dependency injection**: the consumer provides a configured ORT module
+and the library defers to it.
+
+**Upstream fix:**
+- `setOnnxModule(module)` — inject a pre-imported ORT module (the
+  recommended path for workers / custom bundlers); `getOrt()` prefers it.
+  **When injected, the backend no longer touches the module's config** —
+  the consumer owns `wasmPaths` / `numThreads` / execution providers.
+- `configureOnnxAssets({ wasm, mjs })` — sets `env.wasm.wasmPaths` for
+  the auto-load path (bundlers that content-hash assets). Honored as an
+  explicit request even when injected.
+- `ONNXRuntime.initialize()` no longer gates on `typeof window`, and only
+  applies the `/ort/` + `numThreads=1` defaults when it auto-loaded ORT
+  itself — never clobbering values the consumer set.
 - Re-exported `runInferenceNamed` from the package entry point.
 
-All four are now public from `edgeflowjs`. Once a release ships, crest
-can drop the workaround (search its tree for `TODO(edgeflow)`).
+All public from `edgeflowjs`. Once a release ships, crest can drop the
+workaround (search its tree for `TODO(edgeflow)`) and switch to
+inject-and-defer: configure `ort.env` in the worker, then
+`setOnnxModule(ort)`.

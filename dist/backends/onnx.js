@@ -21,20 +21,32 @@ let ort = null;
 let injectedOrt = null;
 let onnxAssetPaths = null;
 /**
- * Inject a pre-imported onnxruntime-web module. Use this in Web Worker
- * contexts where the bundler may not preserve the internal dynamic
- * import. Pass the module from `import * as ort from "onnxruntime-web/wasm"`.
+ * Inject a pre-imported onnxruntime-web module — the recommended
+ * integration path for Web Workers and custom bundler setups, where the
+ * internal dynamic `import('onnxruntime-web/wasm')` may be dropped.
+ *
+ * ONNX Runtime is an optional peer dependency that the consumer owns:
+ * once you inject a module, **you** own its configuration. Configure it
+ * first (`ort.env.wasm.wasmPaths`, `numThreads`, execution providers,
+ * ...) and the backend will use it as-is without overriding anything.
+ *
+ *     import * as ort from "onnxruntime-web/wasm";
+ *     ort.env.wasm.wasmPaths = { wasm: wasmUrl, mjs: mjsUrl };
+ *     ort.env.wasm.numThreads = 1;
+ *     setOnnxModule(ort);
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function setOnnxModule(module) {
     injectedOrt = module;
 }
 /**
- * Configure the onnxruntime-web WASM asset locations. Applied to
- * `env.wasm.wasmPaths` during runtime initialization. Necessary when the
- * consumer's bundler content-hashes the `.wasm` / `.mjs` files (e.g. Vite
- * `?url` imports), since the default `/ort/` prefix cannot resolve hashed
- * filenames.
+ * Configure the onnxruntime-web WASM asset locations (sets
+ * `env.wasm.wasmPaths` during init). Primarily for the auto-load path —
+ * when you let the backend import ORT itself but your bundler content-
+ * hashes the `.wasm` / `.mjs` files (e.g. Vite `?url` imports), so the
+ * default `/ort/` prefix can't resolve them. If you inject your own
+ * module via {@link setOnnxModule}, prefer configuring it directly.
+ * An explicit call here is still honored even for an injected module.
  */
 export function configureOnnxAssets(paths) {
     onnxAssetPaths = paths;
@@ -100,26 +112,30 @@ export class ONNXRuntime {
         if (!ortModule) {
             throw new EdgeFlowError('onnxruntime-web is not installed. Install it with: npm install onnxruntime-web', ErrorCodes.RUNTIME_NOT_AVAILABLE);
         }
-        // Configure the WASM backend. numThreads=1 disables multi-threading so
-        // ort only needs the plain .wasm binary (no SharedArrayBuffer / cross-
-        // origin isolation), which also keeps it usable from Web Workers.
+        // onnxruntime-web is an optional peer dependency the CONSUMER owns.
+        // When they inject a module via setOnnxModule(), they're responsible
+        // for its configuration (wasmPaths, numThreads, execution providers),
+        // so we don't touch it — the library defers entirely. We only apply
+        // convenience defaults when WE auto-loaded ORT ourselves, and even
+        // then never clobber a value the consumer already set.
         //
-        // Asset paths: an explicit configureOnnxAssets() override wins (needed
-        // when the consumer's bundler content-hashes the files); otherwise we
-        // default to the /ort/ directory prefix, but only if the consumer
-        // hasn't already set wasmPaths directly on the module. NOTE: this is
-        // intentionally NOT gated on `typeof window` — Web Workers have no
-        // `window`, and gating here previously left ORT unconfigured (and thus
-        // unusable) in worker contexts.
+        // An explicit configureOnnxAssets() call is honored regardless of how
+        // ORT was loaded — it's an explicit consumer request, not us guessing.
+        //
+        // Note this is intentionally NOT gated on `typeof window`: Web Workers
+        // have no `window`, and the old gate left ORT unconfigured (hence
+        // unusable) in exactly that context.
         const wasmEnv = ortModule.env?.wasm;
         if (wasmEnv) {
             if (onnxAssetPaths) {
                 wasmEnv.wasmPaths = { ...onnxAssetPaths };
             }
-            else if (wasmEnv.wasmPaths === undefined) {
+            else if (!injectedOrt && wasmEnv.wasmPaths === undefined) {
                 wasmEnv.wasmPaths = '/ort/';
             }
-            wasmEnv.numThreads = 1;
+            if (!injectedOrt && wasmEnv.numThreads === undefined) {
+                wasmEnv.numThreads = 1;
+            }
         }
         this.initialized = true;
     }

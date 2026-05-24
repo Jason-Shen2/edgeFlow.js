@@ -18,17 +18,29 @@ export interface OnnxAssetPaths {
     mjs?: string;
 }
 /**
- * Inject a pre-imported onnxruntime-web module. Use this in Web Worker
- * contexts where the bundler may not preserve the internal dynamic
- * import. Pass the module from `import * as ort from "onnxruntime-web/wasm"`.
+ * Inject a pre-imported onnxruntime-web module — the recommended
+ * integration path for Web Workers and custom bundler setups, where the
+ * internal dynamic `import('onnxruntime-web/wasm')` may be dropped.
+ *
+ * ONNX Runtime is an optional peer dependency that the consumer owns:
+ * once you inject a module, **you** own its configuration. Configure it
+ * first (`ort.env.wasm.wasmPaths`, `numThreads`, execution providers,
+ * ...) and the backend will use it as-is without overriding anything.
+ *
+ *     import * as ort from "onnxruntime-web/wasm";
+ *     ort.env.wasm.wasmPaths = { wasm: wasmUrl, mjs: mjsUrl };
+ *     ort.env.wasm.numThreads = 1;
+ *     setOnnxModule(ort);
  */
 export declare function setOnnxModule(module: any): void;
 /**
- * Configure the onnxruntime-web WASM asset locations. Applied to
- * `env.wasm.wasmPaths` during runtime initialization. Necessary when the
- * consumer's bundler content-hashes the `.wasm` / `.mjs` files (e.g. Vite
- * `?url` imports), since the default `/ort/` prefix cannot resolve hashed
- * filenames.
+ * Configure the onnxruntime-web WASM asset locations (sets
+ * `env.wasm.wasmPaths` during init). Primarily for the auto-load path —
+ * when you let the backend import ORT itself but your bundler content-
+ * hashes the `.wasm` / `.mjs` files (e.g. Vite `?url` imports), so the
+ * default `/ort/` prefix can't resolve them. If you inject your own
+ * module via {@link setOnnxModule}, prefer configuring it directly.
+ * An explicit call here is still honored even for an injected module.
  */
 export declare function configureOnnxAssets(paths: OnnxAssetPaths): void;
 /**

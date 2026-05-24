@@ -3709,10 +3709,12 @@ var ONNXRuntime = class {
     if (wasmEnv) {
       if (onnxAssetPaths) {
         wasmEnv.wasmPaths = { ...onnxAssetPaths };
-      } else if (wasmEnv.wasmPaths === void 0) {
+      } else if (!injectedOrt && wasmEnv.wasmPaths === void 0) {
         wasmEnv.wasmPaths = "/ort/";
       }
-      wasmEnv.numThreads = 1;
+      if (!injectedOrt && wasmEnv.numThreads === void 0) {
+        wasmEnv.numThreads = 1;
+      }
     }
     this.initialized = true;
   }
