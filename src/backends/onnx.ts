@@ -25,7 +25,53 @@ import { getMemoryManager } from '../core/memory.js';
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let ort: any = null;
 
+// A consumer-injected onnxruntime-web module. Bundlers like Vite don't
+// always preserve the dynamic `import('onnxruntime-web/wasm')` below
+// inside a Web Worker chunk; when that import is dropped the backend
+// silently reports "no runtime available". Consumers that statically
+// import ORT in their worker can inject it here so getOrt() never has to
+// rely on the dynamic import.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let injectedOrt: any = null;
+
+/**
+ * Override paths for the onnxruntime-web WASM assets, mirroring ORT's
+ * `env.wasm.wasmPaths` object form. Set via {@link configureOnnxAssets}
+ * when the consumer's bundler emits content-hashed asset URLs (a bare
+ * directory prefix can't address those).
+ */
+export interface OnnxAssetPaths {
+  /** URL/path for the main `.wasm` binary. */
+  wasm?: string;
+  /** URL/path for the loader `.mjs` glue. */
+  mjs?: string;
+}
+
+let onnxAssetPaths: OnnxAssetPaths | null = null;
+
+/**
+ * Inject a pre-imported onnxruntime-web module. Use this in Web Worker
+ * contexts where the bundler may not preserve the internal dynamic
+ * import. Pass the module from `import * as ort from "onnxruntime-web/wasm"`.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function setOnnxModule(module: any): void {
+  injectedOrt = module;
+}
+
+/**
+ * Configure the onnxruntime-web WASM asset locations. Applied to
+ * `env.wasm.wasmPaths` during runtime initialization. Necessary when the
+ * consumer's bundler content-hashes the `.wasm` / `.mjs` files (e.g. Vite
+ * `?url` imports), since the default `/ort/` prefix cannot resolve hashed
+ * filenames.
+ */
+export function configureOnnxAssets(paths: OnnxAssetPaths): void {
+  onnxAssetPaths = paths;
+}
+
 async function getOrt(): Promise<any> {
+  if (injectedOrt) return injectedOrt;
   if (ort) return ort;
   try {
     // Import the WASM-only sub-path so Vite rewrites the bare specifier
@@ -104,14 +150,25 @@ export class ONNXRuntime implements Runtime {
       );
     }
 
-    // Configure WASM backend for browser use.
-    // numThreads=1 disables multi-threading so ort only needs the plain
-    // .wasm binary — the worker .mjs file is never requested, which avoids
-    // Vite's restriction on importing files from /public as ES modules.
-    // Consumers should copy onnxruntime-web/dist/*.wasm to public/ort/.
-    if (typeof window !== 'undefined' && ortModule.env?.wasm) {
-      (ortModule.env.wasm as any).wasmPaths = '/ort/';
-      (ortModule.env.wasm as any).numThreads = 1;
+    // Configure the WASM backend. numThreads=1 disables multi-threading so
+    // ort only needs the plain .wasm binary (no SharedArrayBuffer / cross-
+    // origin isolation), which also keeps it usable from Web Workers.
+    //
+    // Asset paths: an explicit configureOnnxAssets() override wins (needed
+    // when the consumer's bundler content-hashes the files); otherwise we
+    // default to the /ort/ directory prefix, but only if the consumer
+    // hasn't already set wasmPaths directly on the module. NOTE: this is
+    // intentionally NOT gated on `typeof window` — Web Workers have no
+    // `window`, and gating here previously left ORT unconfigured (and thus
+    // unusable) in worker contexts.
+    const wasmEnv = ortModule.env?.wasm as any;
+    if (wasmEnv) {
+      if (onnxAssetPaths) {
+        wasmEnv.wasmPaths = { ...onnxAssetPaths };
+      } else if (wasmEnv.wasmPaths === undefined) {
+        wasmEnv.wasmPaths = '/ort/';
+      }
+      wasmEnv.numThreads = 1;
     }
 
     this.initialized = true;

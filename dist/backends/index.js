@@ -8,7 +8,7 @@ export { WebNNRuntime, createWebNNRuntime } from './webnn.js';
 // WASM Backend (basic tensor ops)
 export { WASMRuntime, createWASMRuntime } from './wasm.js';
 // ONNX Runtime Backend (real model inference)
-export { ONNXRuntime, createONNXRuntime, isOnnxAvailable } from './onnx.js';
+export { ONNXRuntime, createONNXRuntime, isOnnxAvailable, setOnnxModule, configureOnnxAssets, } from './onnx.js';
 // transformers.js Adapter Backend
 export { TransformersAdapterRuntime, useTransformersBackend, getTransformersAdapter, } from './transformers-adapter.js';
 import { registerRuntime } from '../core/runtime.js';

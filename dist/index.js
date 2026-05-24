@@ -48,11 +48,13 @@ export { getDeviceProfile, recommendQuantization, recommendModelVariant, resetDe
 // Pipeline composition
 export { compose, parallel, } from './core/composer.js';
 // Runtime management
-export { RuntimeManager, LoadedModelImpl, loadModel, loadModelFromBuffer, runInference, runBatchInference, getRuntimeManager, registerRuntime, getBestRuntime, getAvailableRuntimes, } from './core/runtime.js';
+export { RuntimeManager, LoadedModelImpl, loadModel, loadModelFromBuffer, runInference, runInferenceNamed, runBatchInference, getRuntimeManager, registerRuntime, getBestRuntime, getAvailableRuntimes, } from './core/runtime.js';
 // ============================================================================
 // Backend Exports
 // ============================================================================
 export { WebGPURuntime, createWebGPURuntime, WebNNRuntime, createWebNNRuntime, WASMRuntime, createWASMRuntime, registerAllBackends, 
+// ONNX backend + asset/module injection (for Web Worker consumers)
+ONNXRuntime, createONNXRuntime, isOnnxAvailable, setOnnxModule, configureOnnxAssets, 
 // transformers.js adapter
 TransformersAdapterRuntime, useTransformersBackend, getTransformersAdapter, } from './backends/index.js';
 // ============================================================================

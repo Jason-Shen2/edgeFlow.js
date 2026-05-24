@@ -12,7 +12,14 @@ export { WebNNRuntime, createWebNNRuntime } from './webnn.js';
 export { WASMRuntime, createWASMRuntime } from './wasm.js';
 
 // ONNX Runtime Backend (real model inference)
-export { ONNXRuntime, createONNXRuntime, isOnnxAvailable } from './onnx.js';
+export {
+  ONNXRuntime,
+  createONNXRuntime,
+  isOnnxAvailable,
+  setOnnxModule,
+  configureOnnxAssets,
+  type OnnxAssetPaths,
+} from './onnx.js';
 
 // transformers.js Adapter Backend
 export {

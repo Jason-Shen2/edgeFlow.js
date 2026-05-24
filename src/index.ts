@@ -178,6 +178,7 @@ export {
   loadModel,
   loadModelFromBuffer,
   runInference,
+  runInferenceNamed,
   runBatchInference,
   getRuntimeManager,
   registerRuntime,
@@ -197,7 +198,15 @@ export {
   WASMRuntime,
   createWASMRuntime,
   registerAllBackends,
-  
+
+  // ONNX backend + asset/module injection (for Web Worker consumers)
+  ONNXRuntime,
+  createONNXRuntime,
+  isOnnxAvailable,
+  setOnnxModule,
+  configureOnnxAssets,
+  type OnnxAssetPaths,
+
   // transformers.js adapter
   TransformersAdapterRuntime,
   useTransformersBackend,

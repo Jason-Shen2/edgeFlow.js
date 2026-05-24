@@ -4,7 +4,7 @@
 export { WebGPURuntime, createWebGPURuntime } from './webgpu.js';
 export { WebNNRuntime, createWebNNRuntime } from './webnn.js';
 export { WASMRuntime, createWASMRuntime } from './wasm.js';
-export { ONNXRuntime, createONNXRuntime, isOnnxAvailable } from './onnx.js';
+export { ONNXRuntime, createONNXRuntime, isOnnxAvailable, setOnnxModule, configureOnnxAssets, type OnnxAssetPaths, } from './onnx.js';
 export { TransformersAdapterRuntime, useTransformersBackend, getTransformersAdapter, type TransformersAdapterOptions, type TransformersPipelineFactory, } from './transformers-adapter.js';
 export type { Runtime, RuntimeType, RuntimeCapabilities } from '../core/types.js';
 /**

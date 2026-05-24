@@ -3647,7 +3647,17 @@ function createWASMRuntime() {
 init_types();
 init_tensor();
 var ort = null;
+var injectedOrt = null;
+var onnxAssetPaths = null;
+function setOnnxModule(module) {
+  injectedOrt = module;
+}
+function configureOnnxAssets(paths) {
+  onnxAssetPaths = paths;
+}
 async function getOrt() {
+  if (injectedOrt)
+    return injectedOrt;
   if (ort)
     return ort;
   try {
@@ -3695,9 +3705,14 @@ var ONNXRuntime = class {
     if (!ortModule) {
       throw new EdgeFlowError("onnxruntime-web is not installed. Install it with: npm install onnxruntime-web", ErrorCodes.RUNTIME_NOT_AVAILABLE);
     }
-    if (typeof window !== "undefined" && ortModule.env?.wasm) {
-      ortModule.env.wasm.wasmPaths = "/ort/";
-      ortModule.env.wasm.numThreads = 1;
+    const wasmEnv = ortModule.env?.wasm;
+    if (wasmEnv) {
+      if (onnxAssetPaths) {
+        wasmEnv.wasmPaths = { ...onnxAssetPaths };
+      } else if (wasmEnv.wasmPaths === void 0) {
+        wasmEnv.wasmPaths = "/ort/";
+      }
+      wasmEnv.numThreads = 1;
     }
     this.initialized = true;
   }
@@ -10840,6 +10855,7 @@ export {
   MemoryScope,
   ModelCache,
   ModelDownloadCache,
+  ONNXRuntime,
   POPULAR_MODELS,
   PerformanceMonitor,
   RuntimeManager,
@@ -10866,6 +10882,7 @@ export {
   compareBenchmarks,
   compose,
   concat,
+  configureOnnxAssets,
   configureScheduler,
   createAsciiHistogram,
   createAudioPreprocessor,
@@ -10875,6 +10892,7 @@ export {
   createImageClassificationPipeline,
   createImagePreprocessor,
   createImageSegmentationPipeline,
+  createONNXRuntime,
   createPipelines,
   createSentimentAnalysisPipeline,
   createTensorHeatmap,
@@ -10930,6 +10948,7 @@ export {
   getTransformersAdapter,
   inspectTensor,
   isModelCached,
+  isOnnxAvailable,
   isSupported,
   linspace,
   listPlugins,
@@ -10969,6 +10988,8 @@ export {
   runBatchInference,
   benchmark as runBenchmark,
   runInference,
+  runInferenceNamed,
+  setOnnxModule,
   setScheduler,
   sigmoid,
   softmax,
